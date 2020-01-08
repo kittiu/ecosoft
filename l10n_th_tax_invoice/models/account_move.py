@@ -13,9 +13,7 @@ class AccountMoveTaxInvoice(models.Model):
     move_line_id = fields.Many2one(
         comodel_name="account.move.line", index=True, copy=False
     )
-    move_id = fields.Many2one(
-        comodel_name="account.move", related="move_line_id.move_id", store=True
-    )
+    move_id = fields.Many2one(comodel_name="account.move", index=True, copy=False)
     payment_id = fields.Many2one(
         comodel_name="account.payment", compute="_compute_payment_id", store=True
     )
@@ -63,7 +61,9 @@ class AccountMoveLine(models.Model):
         TaxInvoice = self.env["account.move.tax.invoice"]
         for line in move_lines:
             if line.tax_line_id and line.tax_exigible:
-                taxinv = TaxInvoice.create({"move_line_id": line.id})
+                taxinv = TaxInvoice.create(
+                    {"move_id": line.move_id.id, "move_line_id": line.id}
+                )
                 line.tax_invoice_id = taxinv
         return move_lines
 
@@ -114,7 +114,10 @@ class AccountMove(models.Model):
                 lambda l: l.tax_line_id.type_tax_use == "sale"
             ):
                 tax_invoice.write(
-                    {"tax_invoice_number": move.name, "tax_invoice_date": move.date}
+                    {
+                        "tax_invoice_number": move.ref or move.name,
+                        "tax_invoice_date": move.date,
+                    }
                 )
         return res
 

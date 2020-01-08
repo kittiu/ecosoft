@@ -32,20 +32,16 @@ class TestTaxInvoice(SingleTransactionCase):
         )
         # Accounts
         cls.output_vat_acct = cls.env["account.account"].create(
-            {"name": "O7", "code": "O7", "user_type_id": type_current_liability.id,
-             "create_asset": "no"}
+            {"name": "O7", "code": "O7", "user_type_id": type_current_liability.id}
         )
         cls.undue_output_vat_acct = cls.env["account.account"].create(
-            {"name": "DO7", "code": "DO7", "user_type_id": type_current_asset.id,
-             "create_asset": "no"}
+            {"name": "DO7", "code": "DO7", "user_type_id": type_current_asset.id}
         )
         cls.input_vat_acct = cls.env["account.account"].create(
-            {"name": "V7", "code": "V7", "user_type_id": type_current_liability.id,
-             "create_asset": "no"}
+            {"name": "V7", "code": "V7", "user_type_id": type_current_liability.id}
         )
         cls.undue_input_vat_acct = cls.env["account.account"].create(
-            {"name": "DV7", "code": "DV7", "user_type_id": type_current_asset.id,
-             "create_asset": "no"}
+            {"name": "DV7", "code": "DV7", "user_type_id": type_current_asset.id}
         )
         # Tax Group
         cls.tax_group_undue_vat = cls.env["account.tax.group"].create(
