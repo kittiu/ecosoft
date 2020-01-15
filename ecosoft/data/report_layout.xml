@@ -32,6 +32,8 @@
                         <li t-if="company.email" class="list-inline-item">Mail: <span t-field="company.email"/></li>
                         <li t-if="company.website" class="list-inline-item">Web: <span t-field="company.website"/></li>
                         <li t-if="company.vat" class="list-inline-item"><t t-esc="company.country_id.vat_label or 'Tax ID'"/>: <span t-field="company.vat"/></li>
+                        <!-- Add Tax Branch -->
+                        <li t-if="company.branch" class="list-inline-item"> / <span t-field="company.branch"/></li>
                     </ul>
                     <div t-field="company.report_footer"/>
                     <div t-if="report_type == 'pdf'">
