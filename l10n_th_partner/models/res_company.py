@@ -3,7 +3,7 @@
 from odoo import fields, models
 
 
-class ResPartner(models.Model):
-    _inherit = "res.partner"
+class ResCompany(models.Model):
+    _inherit = "res.company"
 
-    branch = fields.Char(string="Tax Branch", help="Branch ID, e.g., 0000, 0001, ...")
+    branch = fields.Char(related='partner_id.branch', string="Tax Branch", readonly=False)
