@@ -14,6 +14,7 @@
     'author': 'Ecosoft',
     'website': 'http://ecosoft.co.th/',
     'depends': ['web',
+                'sale',
                 'l10n_th_partner'],
     'data': [
         'data/report_layout.xml',
