@@ -20,5 +20,6 @@
         'data/report_layout.xml',
         'report/invoice_report_templates.xml',
         'report/sale_report_templates.xml',
+        'report/report_receipt_tax_invoice.xml',
     ],
 }
