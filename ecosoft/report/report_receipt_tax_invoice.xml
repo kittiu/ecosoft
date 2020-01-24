@@ -8,12 +8,18 @@
             report_type="qweb-pdf"
             name="ecosoft.report_receipt_tax_invoice"
             file="ecosoft.report_receipt_tax_invoice"
-            print_report_name="(object.name).replace('/', '').replace('.', '')"
+            print_report_name="object and object.name and object.name.replace('/', '').replace('.', '') or 'False'"
         />
 
         <template id="report_invoice_document_from_payments" inherit_id="account.report_invoice_document" primary="True">
             <xpath expr="//h2" position="replace">
                 <h2>Receipt/Tax Invoice <span t-if="o.name != '/'" t-field="pay.name"/></h2>
+            </xpath>
+            <xpath expr="//div[@name='invoice_date']" position="replace">
+                <div class="col-auto mw-100 mb-2" t-if="pay.payment_date" name="payment_date">
+                    <strong>Date:</strong>
+                    <p class="m-0" t-field="pay.payment_date"/>
+                </div>
             </xpath>
             <xpath expr="//div[@id='total']/div/table" position="inside">
                <t t-set="payments_vals" t-value="o and o._get_reconciled_info_JSON_values() or []"/>
