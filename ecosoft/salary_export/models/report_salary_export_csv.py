@@ -38,7 +38,7 @@ class SalaryExportCSV(models.AbstractModel):
                 "acc_holder_name": company_acc_holder_name.ljust(49),
                 "date_transfer": "%s%s" % (obj_date_transfer,
                                            ("%sN" % emp_count).zfill(19)),
-                "end": "",
+                "end": "".rjust(4),
             }
             writer.writerow(header)
             i = 0
