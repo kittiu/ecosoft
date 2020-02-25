@@ -32,7 +32,7 @@ class SalaryExportCSV(models.AbstractModel):
             header = {
                 "sequence": head_seq,
                 "acc_number": company_acc_number.replace(" ", "").rjust(23),
-                "amount": str(int(total_amount)).zfill(15),
+                "amount": '{0:.2f}'.format(total_amount).replace(".","").zfill(15),
                 "date": obj_date,
                 "space": "".rjust(23),
                 "acc_holder_name": company_acc_holder_name.ljust(49),
@@ -51,7 +51,7 @@ class SalaryExportCSV(models.AbstractModel):
                 writer.writerow({
                     "sequence": "D%s" % str(i).zfill(6),
                     "acc_number": acc_number.replace(" ", "").rjust(23),
-                    "amount": str(int(line.amount)).zfill(15),
+                    "amount": '{0:.2f}'.format(line.amount).replace(".","").zfill(15),
                     "date": obj_date,
                     "space": "".rjust(23),
                     "acc_holder_name": acc_holder_name.ljust(49),
