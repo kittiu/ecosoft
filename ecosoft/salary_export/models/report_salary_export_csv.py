@@ -19,7 +19,7 @@ class SalaryExportCSV(models.AbstractModel):
         if not banks:
             raise UserError(_("No Kasikorn Bank in this company"))
         company_acc_holder_name = banks[0].acc_holder_name if banks else ""
-        company_acc_number = banks[0].acc_holder_name if banks else ""
+        company_acc_number = banks[0].acc_number if banks else ""
         for obj in exports:
             total_amount = sum(obj.line_ids.mapped("amount"))
             tz_date = obj.date.astimezone(pytz.timezone(tz))
@@ -29,7 +29,7 @@ class SalaryExportCSV(models.AbstractModel):
             head_seq = "HPCTPCT%s%s %s" % (obj_date, obj_time, "000000")
             emp_count = len(obj.line_ids)
             # 1st line
-            x = {
+            header = {
                 "sequence": head_seq,
                 "acc_number": company_acc_number.replace(" ", "").rjust(23),
                 "amount": str(int(total_amount)).zfill(15),
@@ -40,8 +40,7 @@ class SalaryExportCSV(models.AbstractModel):
                                            ("%sN" % emp_count).zfill(19)),
                 "end": "",
             }
-            print(x)
-            writer.writerow(x)
+            writer.writerow(header)
             i = 0
             for line in obj.line_ids:
                 i += 1
