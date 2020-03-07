@@ -3,7 +3,7 @@
 
 {
     'name': 'Ecosoft Customization',
-    'version': '13.0.1.0.0',
+    'version': '13.0.1.0.1',
     'category': 'Localization',
     'description': """
 * New Report Layout

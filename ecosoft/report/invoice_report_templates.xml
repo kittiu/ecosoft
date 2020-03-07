@@ -19,7 +19,7 @@
             <t t-set="partner_name" t-value="o.invoice_partner_bank_id.acc_holder_name or o.invoice_partner_bank_id.partner_id.name"/>
             <t t-set="bank_name" t-value="o.invoice_partner_bank_id.bank_id.display_name"/>
             <t t-set="bank_acc_number" t-value="o.invoice_partner_bank_id.acc_number"/>
-            <p t-if="o.type in ('out_invoice', 'in_refund')">
+            <p t-if="o.type in ('out_invoice', 'in_refund') and o.invoice_payment_state != 'paid'">
                 Pay to '<span t-esc="partner_name"/>' <span t-esc="bank_name"/>. Account Number <span t-esc="bank_acc_number"/>.
             </p>
         </xpath>
