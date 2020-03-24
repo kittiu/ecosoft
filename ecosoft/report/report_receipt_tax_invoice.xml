@@ -21,9 +21,9 @@
                     <p class="m-0" t-field="pay.payment_date"/>
                 </div>
             </xpath>
-            <xpath expr="//div[@name='reference']" position="replace">
-                <div class="col-auto mw-100 mb-2" t-if="o.name" name="reference">
-                    <strong>Reference:</strong>
+            <xpath expr="//div[@name='reference']" position="after">
+                <div class="col-auto mw-100 mb-2" t-if="o.name" name="inv_reference">
+                    <strong>Invoice Reference:</strong>
                     <p class="m-0" t-field="o.name"/>
                 </div>
             </xpath>
