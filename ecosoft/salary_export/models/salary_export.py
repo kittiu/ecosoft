@@ -21,6 +21,7 @@ class SalaryExport(models.Model):
         comodel_name="salary.export.line",
         inverse_name="export_id",
         readonly=False,
+        copy=True,
     )
 
     @api.onchange("name")
