@@ -9,19 +9,28 @@ class SalaryExport(models.Model):
 
     name = fields.Char(
         required=True,
+        readonly=True, states={'draft': [('readonly', False)]},
     )
     date = fields.Datetime(
         required=True,
         default=fields.Datetime.now,
+        readonly=True, states={'draft': [('readonly', False)]},
     )
     date_transfer = fields.Date(
         required=True,
+        readonly=True, states={'draft': [('readonly', False)]},
     )
     line_ids = fields.One2many(
         comodel_name="salary.export.line",
         inverse_name="export_id",
-        readonly=False,
         copy=True,
+        readonly=True, states={'draft': [('readonly', False)]},
+    )
+    state = fields.Selection(
+        [("draft", "Draft"), ("done", "Done")],
+        string="Status",
+        default="draft",
+        readonly=True, copy=False, index=True,
     )
 
     @api.onchange("name")
@@ -33,6 +42,12 @@ class SalaryExport(models.Model):
             line_obj = self.env["salary.export.line"]
             lines = [{"employee_id": e.id} for e in employees]
             self.line_ids = [line_obj.new(line).id for line in lines]
+
+    def action_draft(self):
+        self.write({"state": "draft"})
+
+    def action_done(self):
+        self.write({"state": "done"})
 
 
 class SalaryExportLine(models.Model):

@@ -8,6 +8,7 @@
             <tree string="Salary Export">
                 <field name="name"/>
                 <field name="date"/>
+                <field name="state"/>
             </tree>
         </field>
     </record>
@@ -17,6 +18,11 @@
         <field name="model">salary.export</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <button name="action_draft" states="done" type="object" string="Set to Draft"/>
+                    <button name="action_done" states="draft" type="object" string="Set to Done" class="oe_highlight"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,done"/>
+                </header>
                 <sheet>
                     <group>
                         <group>
@@ -46,6 +52,9 @@
         <field name="arch" type="xml">
             <search string="Salary Export">
                 <field name="name"/>
+                <group expand="0" string="Group By">
+                    <filter string="State" name="state" domain="[]" context="{'group_by': 'state'}"/>
+                </group>
             </search>
         </field>
     </record>
