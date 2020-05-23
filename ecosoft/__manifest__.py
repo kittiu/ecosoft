@@ -3,7 +3,7 @@
 
 {
     'name': 'Ecosoft Customization',
-    'version': '13.0.1.0.1',
+    'version': '13.0.1.2.0',
     'category': 'Localization',
     'description': """
 * New Report Layout
@@ -25,6 +25,7 @@
         'report/invoice_report_templates.xml',
         'report/sale_report_templates.xml',
         'report/report_receipt_tax_invoice.xml',
+        'report/report_invoices_tax_invoice.xml',
         # Salary Export
         'salary_export/security/ir.model.access.csv',
         'salary_export/views/salary_export.xml',
