@@ -23,6 +23,7 @@
                             'E16': 'name',
                             'H16': 'analytic_account_id',
                             'I16': 'unit_amount',
+                            'K16': 'employee_id',
                         }
                     }
                 },
