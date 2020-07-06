@@ -69,8 +69,10 @@ class AccountMoveTaxInvoice(models.Model):
         for move_line in self.mapped("move_line_id"):
             line_taxinv.update({move_line.id: move_line.tax_invoice_ids.ids})
         for rec in self.filtered("move_line_id"):
-            if len(line_taxinv[rec.move_line_id.id]) == 1:
-                raise UserError(_("Cannot delete this tax invoice line"))
+            if len(line_taxinv[rec.move_line_id.id]) == 1 and not self._context.get(
+                "force_remove_tax_invoice"
+            ):
+                raise UserError(_("Cannot delete this last tax invoice line"))
             line_taxinv[rec.move_line_id.id].remove(rec.id)
         return super().unlink()
 
@@ -81,10 +83,13 @@ class AccountMoveLine(models.Model):
     tax_invoice_ids = fields.One2many(
         comodel_name="account.move.tax.invoice", inverse_name="move_line_id"
     )
+    manual_tax_invoice = fields.Boolean(
+        copy=False, help="Create Tax Invoice for this debit/credit line"
+    )
 
     def _checkout_tax_invoice_amount(self):
         for line in self:
-            if line.tax_invoice_ids:
+            if not line.manual_tax_invoice and line.tax_invoice_ids:
                 tax_base = sum(line.tax_invoice_ids.mapped("tax_base_amount"))
                 tax = sum(line.tax_invoice_ids.mapped("balance"))
                 if (
@@ -94,13 +99,13 @@ class AccountMoveLine(models.Model):
                     raise UserError(_("Invalid Tax Base/Amount"))
 
     def create(self, vals):
-        if self._context.get("payment_id"):
+        if vals and self._context.get("payment_id"):
             vals["payment_id"] = self._context["payment_id"]
         move_lines = super().create(vals)
         TaxInvoice = self.env["account.move.tax.invoice"]
         sign = self._context.get("reverse_tax_invoice") and -1 or 1
         for line in move_lines:
-            if line.tax_line_id and line.tax_exigible:
+            if (line.tax_line_id and line.tax_exigible) or line.manual_tax_invoice:
                 taxinv = TaxInvoice.create(
                     {
                         "move_id": line.move_id.id,
@@ -110,7 +115,11 @@ class AccountMoveLine(models.Model):
                         "tax_invoice_date": sign < 0 and fields.Date.today() or False,
                         "tax_base_amount": sign * abs(line.tax_base_amount),
                         "balance": sign * abs(line.balance),
-                        "reversed_id": line.move_id.reversed_entry_id.id,
+                        "reversed_id": (
+                            line.move_id.type == "entry"
+                            and line.move_id.reversed_entry_id.id
+                            or False
+                        ),
                     }
                 )
                 line.tax_invoice_ids |= taxinv
@@ -120,6 +129,26 @@ class AccountMoveLine(models.Model):
                     {"reversing_id": taxinv.move_id.id}
                 )
         return move_lines
+
+    def write(self, vals):
+        if "manual_tax_invoice" in vals:
+            if vals["manual_tax_invoice"]:
+                TaxInvoice = self.env["account.move.tax.invoice"]
+                for line in self:
+                    taxinv = TaxInvoice.create(
+                        {
+                            "move_id": line.move_id.id,
+                            "move_line_id": line.id,
+                            "partner_id": line.partner_id.id,
+                            "tax_base_amount": abs(line.tax_base_amount),
+                            "balance": abs(line.balance),
+                        }
+                    )
+                    line.tax_invoice_ids |= taxinv
+            else:
+                self = self.with_context(force_remove_tax_invoice=True)
+                self.mapped("tax_invoice_ids").unlink()
+        return super().write(vals)
 
 
 class AccountMove(models.Model):
@@ -152,6 +181,14 @@ class AccountMove(models.Model):
                     else:
                         raise UserError(_("Please fill in tax invoice and tax date"))
 
+        # Cleanup, delete lines with same account_id and sum(amount) == 0
+        for move in self:
+            accounts = move.line_ids.mapped("account_id")
+            for account in accounts:
+                lines = move.line_ids.filtered(lambda l: l.account_id == account)
+                if sum(lines.mapped("balance")) == 0:
+                    lines.unlink()
+
         res = super().post()
 
         # Sales Taxes
@@ -172,13 +209,24 @@ class AccountMove(models.Model):
         return res
 
     def _get_tax_invoice_number(self, move, tax_invoice, tax):
+        """ Tax Invoice Numbering for Customer Invioce / Receipt
+        - If type in ("out_invoice", "out_refund")
+          - If number is (False, "/"), consider it no valid number then,
+            - If sequence -> use sequence
+            - If not sequence -> use move number
+        - Else,
+          - If no number
+            - If type = "entry" and has reversed entry, use origin number
+        """
         origin_move = move.type == "entry" and move.reversed_entry_id or move
         sequence = tax_invoice.tax_line_id.taxinv_sequence_id
         number = tax_invoice.tax_invoice_number
         invoice_date = tax_invoice.tax_invoice_date or origin_move.date
+        if move.type in ("out_invoice", "out_refund"):
+            number = False if number in (False, "/") else number
         if not number:
             if sequence:
-                if move.reversed_entry_id:  # Find sequence of origin move
+                if move != origin_move:  # Case reversed entry, use origin
                     tax_invoices = origin_move.tax_invoice_ids.filtered(
                         lambda l: l.tax_line_id == tax
                     )
@@ -189,7 +237,7 @@ class AccountMove(models.Model):
                         raise ValidationError(
                             _("Cannot set tax invoice number, number already exists.")
                         )
-                else:  # New sequence
+                else:  # Normal case, use new sequence
                     number = sequence.next_by_id(sequence_date=move.date)
             else:  # Now sequence for this tax, use document number
                 number = tax_invoice.payment_id.name or origin_move.name
@@ -202,8 +250,15 @@ class AccountMove(models.Model):
         )
 
     def button_draft(self):
-        # Do not set draft cash basis move on payment, they will be reversed
-        moves = self.filtered(lambda m: not (m.type == "entry" and m.tax_invoice_ids))
+        # Do not set draft cash basis move tax invoice created from payment
+        # They are move "entry" with tax invoice line and are not manual tax
+        moves = self.filtered(
+            lambda m: not (
+                m.type == "entry"
+                and m.tax_invoice_ids
+                and not m.line_ids.filtered("manual_tax_invoice")
+            )
+        )
         return super(AccountMove, moves).button_draft()
 
     def unlink(self):
