@@ -37,7 +37,7 @@
                                 <field name="employee_id"/>
                                 <field name="acc_number"/>
                                 <field name="acc_holder_name"/>
-                                <field name="amount"/>
+                                <field name="amount" sum="Total"/>
                             </tree>
                         </field>
                     </group>
