@@ -1,5 +1,8 @@
 # Copyright 2019 Ecosoft Co., Ltd (http://ecosoft.co.th/)
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html)
+import calendar
+import datetime
+from dateutil.relativedelta import relativedelta
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_compare
@@ -11,6 +14,18 @@ class AccountMoveTaxInvoice(models.Model):
 
     tax_invoice_number = fields.Char(string="Tax Invoice Number", copy=False)
     tax_invoice_date = fields.Date(string="Tax Invoice Date", copy=False)
+    report_late_mo = fields.Selection(
+        [("0", "0 month"), ("1", "1 month"), ("2", "2 months"),
+         ("4", "4 months"), ("5", "5 months"), ("6", "6 months")],
+        string="Report Late",
+        default="0",
+        required=True,
+    )
+    report_date = fields.Date(
+        string="Report Date",
+        compute="_compute_report_date",
+        store=True,
+    )
     move_line_id = fields.Many2one(
         comodel_name="account.move.line", index=True, copy=True, ondelete="cascade"
     )
@@ -62,6 +77,16 @@ class AccountMoveTaxInvoice(models.Model):
                 rec.payment_id = (
                     payment and payment.id or self._context.get("payment_id", False)
                 )
+
+    @api.depends("report_late_mo", "tax_invoice_date")
+    def _compute_report_date(self):
+        for rec in self:
+            if rec.tax_invoice_date:
+                eval_date = rec.tax_invoice_date + relativedelta(months=int(rec.report_late_mo))
+                last_date = calendar.monthrange(eval_date.year, eval_date.month)[1]
+                rec.report_date = datetime.date(eval_date.year, eval_date.month, last_date)
+            else:
+                rec.report_date = False
 
     def unlink(self):
         """ Do not allow remove the last tax_invoice of move_line """
