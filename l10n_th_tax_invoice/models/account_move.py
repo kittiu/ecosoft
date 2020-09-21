@@ -15,7 +15,7 @@ class AccountMoveTaxInvoice(models.Model):
     tax_invoice_number = fields.Char(string="Tax Invoice Number", copy=False)
     tax_invoice_date = fields.Date(string="Tax Invoice Date", copy=False)
     report_late_mo = fields.Selection(
-        [("0", "0 month"), ("1", "1 month"), ("2", "2 months"),
+        [("0", "0 month"), ("1", "1 month"), ("2", "2 months"), ("3", "3 months"),
          ("4", "4 months"), ("5", "5 months"), ("6", "6 months")],
         string="Report Late",
         default="0",
