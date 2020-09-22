@@ -115,13 +115,9 @@ class AccountMoveLine(models.Model):
     def _checkout_tax_invoice_amount(self):
         for line in self:
             if not line.manual_tax_invoice and line.tax_invoice_ids:
-                tax_base = sum(line.tax_invoice_ids.mapped("tax_base_amount"))
                 tax = sum(line.tax_invoice_ids.mapped("balance"))
-                if (
-                    float_compare(abs(line.tax_base_amount), abs(tax_base), 2) != 0
-                    or float_compare(abs(line.balance), abs(tax), 2) != 0
-                ):
-                    raise UserError(_("Invalid Tax Base/Amount"))
+                if float_compare(abs(line.balance), abs(tax), 2) != 0:
+                    raise UserError(_("Invalid Tax Amount"))
 
     def create(self, vals):
         if vals and self._context.get("payment_id"):
