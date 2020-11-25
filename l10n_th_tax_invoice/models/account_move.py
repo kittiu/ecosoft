@@ -2,7 +2,9 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html)
 import calendar
 import datetime
+
 from dateutil.relativedelta import relativedelta
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_compare
@@ -15,21 +17,28 @@ class AccountMoveTaxInvoice(models.Model):
     tax_invoice_number = fields.Char(string="Tax Invoice Number", copy=False)
     tax_invoice_date = fields.Date(string="Tax Invoice Date", copy=False)
     report_late_mo = fields.Selection(
-        [("0", "0 month"), ("1", "1 month"), ("2", "2 months"), ("3", "3 months"),
-         ("4", "4 months"), ("5", "5 months"), ("6", "6 months")],
+        [
+            ("0", "0 month"),
+            ("1", "1 month"),
+            ("2", "2 months"),
+            ("3", "3 months"),
+            ("4", "4 months"),
+            ("5", "5 months"),
+            ("6", "6 months"),
+        ],
         string="Report Late",
         default="0",
         required=True,
     )
     report_date = fields.Date(
-        string="Report Date",
-        compute="_compute_report_date",
-        store=True,
+        string="Report Date", compute="_compute_report_date", store=True,
     )
     move_line_id = fields.Many2one(
         comodel_name="account.move.line", index=True, copy=True, ondelete="cascade"
     )
-    partner_id = fields.Many2one(comodel_name="res.partner", string="Partner")
+    partner_id = fields.Many2one(
+        comodel_name="res.partner", string="Partner", ondelete="restrict",
+    )
     move_id = fields.Many2one(comodel_name="account.move", index=True, copy=True)
     move_state = fields.Selection(
         [("draft", "Draft"), ("posted", "Posted"), ("cancel", "Cancelled")],
@@ -82,9 +91,13 @@ class AccountMoveTaxInvoice(models.Model):
     def _compute_report_date(self):
         for rec in self:
             if rec.tax_invoice_date:
-                eval_date = rec.tax_invoice_date + relativedelta(months=int(rec.report_late_mo))
+                eval_date = rec.tax_invoice_date + relativedelta(
+                    months=int(rec.report_late_mo)
+                )
                 last_date = calendar.monthrange(eval_date.year, eval_date.month)[1]
-                rec.report_date = datetime.date(eval_date.year, eval_date.month, last_date)
+                rec.report_date = datetime.date(
+                    eval_date.year, eval_date.month, last_date
+                )
             else:
                 rec.report_date = False
 
@@ -120,8 +133,6 @@ class AccountMoveLine(models.Model):
                     raise UserError(_("Invalid Tax Amount"))
 
     def create(self, vals):
-        if vals and self._context.get("payment_id"):
-            vals["payment_id"] = self._context["payment_id"]
         move_lines = super().create(vals)
         TaxInvoice = self.env["account.move.tax.invoice"]
         sign = self._context.get("reverse_tax_invoice") and -1 or 1
@@ -191,6 +202,11 @@ class AccountMove(models.Model):
         for move in self:
             for tax_invoice in move.tax_invoice_ids.filtered(
                 lambda l: l.tax_line_id.type_tax_use == "purchase"
+                or (
+                    l.move_id.type == "entry"
+                    and not l.payment_id
+                    and l.move_id.journal_id.type != "sale"
+                )
             ):
                 if (
                     not tax_invoice.tax_invoice_number
@@ -205,25 +221,29 @@ class AccountMove(models.Model):
                     else:
                         raise UserError(_("Please fill in tax invoice and tax date"))
 
+        # TOFIX: this operation does cause serious impact in some case.
+        # I.e., When a normal invoice with amount 0.0 line, deletion is prohibited,
+        #       because it can set back the invoice status of invoice.
+        #       Until there is better way to resolve, please keep this commented.
         # Cleanup, delete lines with same account_id and sum(amount) == 0
-        cash_basis_account_ids = (
-            self.env["account.tax"]
-            .search([("cash_basis_transition_account_id", "!=", False)])
-            .mapped("cash_basis_transition_account_id.id")
-        )
-        for move in self:
-            accounts = move.line_ids.mapped("account_id")
-            partners = move.line_ids.mapped("partner_id")
-            for account in accounts:
-                for partner in partners:
-                    lines = move.line_ids.filtered(
-                        lambda l: l.account_id == account
-                        and l.partner_id == partner
-                        and not l.tax_invoice_ids
-                        and l.account_id.id not in cash_basis_account_ids
-                    )
-                    if sum(lines.mapped("balance")) == 0:
-                        lines.unlink()
+        # cash_basis_account_ids = (
+        #     self.env["account.tax"]
+        #     .search([("cash_basis_transition_account_id", "!=", False)])
+        #     .mapped("cash_basis_transition_account_id.id")
+        # )
+        # for move in self:
+        #     accounts = move.line_ids.mapped("account_id")
+        #     partners = move.line_ids.mapped("partner_id")
+        #     for account in accounts:
+        #         for partner in partners:
+        #             lines = move.line_ids.filtered(
+        #                 lambda l: l.account_id == account
+        #                 and l.partner_id == partner
+        #                 and not l.tax_invoice_ids
+        #                 and l.account_id.id not in cash_basis_account_ids
+        #             )
+        #             if sum(lines.mapped("balance")) == 0:
+        #                 lines.unlink()
 
         res = super().post()
 
@@ -231,6 +251,7 @@ class AccountMove(models.Model):
         for move in self:
             for tax_invoice in move.tax_invoice_ids.filtered(
                 lambda l: l.tax_line_id.type_tax_use == "sale"
+                or l.move_id.journal_id.type == "sale"
             ):
                 tinv_number, tinv_date = self._get_tax_invoice_number(
                     move, tax_invoice, tax_invoice.tax_line_id
@@ -284,18 +305,6 @@ class AccountMove(models.Model):
         return super()._reverse_moves(
             default_values_list=default_values_list, cancel=cancel
         )
-
-    def button_draft(self):
-        # Do not set draft cash basis move tax invoice created from payment
-        # They are move "entry" with tax invoice line and are not manual tax
-        moves = self.filtered(
-            lambda m: not (
-                m.type == "entry"
-                and m.tax_invoice_ids
-                and not m.line_ids.filtered("manual_tax_invoice")
-            )
-        )
-        return super(AccountMove, moves).button_draft()
 
     def unlink(self):
         # Do not unlink cash basis move on payment, they will be reversed
