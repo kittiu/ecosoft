@@ -17,7 +17,9 @@
 
         <template id="ecosoft.report_invoice_document_from_payments_no_tax_invoice" inherit_id="account.report_invoice_document" primary="True">
             <xpath expr="//h2" position="replace">
-                <h2>Receipt <span t-if="o.name != '/'" t-field="pay.name"/></h2>
+                <h2>Receipt <span t-if="o.name != '/'" t-field="pay.name"/>
+                    <span t-if="i > 0">(COPY)</span>
+                </h2>
             </xpath>
             <xpath expr="//div[@name='invoice_date']" position="replace">
                 <div class="col-auto mw-100 mb-2" t-if="pay.payment_date" name="payment_date">
@@ -64,7 +66,10 @@
                 <t t-foreach="docs" t-as="pay">
                     <t t-set="o" t-value="pay.reconciled_invoice_ids and pay.reconciled_invoice_ids[0] or pay.reconciled_invoice_ids"/>  <!-- Work only with 1 invoice  per payment -->
                     <t t-set="lang" t-value="o.invoice_user_id.sudo().lang if o.type in ('in_invoice', 'in_refund') else o.partner_id.lang"/>
-                    <t t-call="ecosoft.report_invoice_document_from_payments_no_tax_invoice" t-lang="lang"/>
+                    <t t-set="ncopies" t-value="2"/>
+                    <t t-foreach="range(ncopies)" t-as="i">
+                        <t t-call="ecosoft.report_invoice_document_from_payments_no_tax_invoice" t-lang="lang"/>
+                    </t>
                 </t>
             </t>
         </template>
@@ -83,7 +88,9 @@
 
         <template id="ecosoft.report_invoice_document_from_payments" inherit_id="account.report_invoice_document" primary="True">
             <xpath expr="//h2" position="replace">
-                <h2>Receipt/Tax Invoice <span t-if="o.name != '/'" t-field="pay.name"/></h2>
+                <h2>Receipt/Tax Invoice <span t-if="o.name != '/'" t-field="pay.name"/>
+                    <span t-if="i > 0">(COPY)</span>
+                </h2>
             </xpath>
             <xpath expr="//div[@name='invoice_date']" position="replace">
                 <div class="col-auto mw-100 mb-2" t-if="pay.payment_date" name="payment_date">
@@ -129,7 +136,10 @@
                 <t t-foreach="docs" t-as="pay">
                     <t t-set="o" t-value="pay.reconciled_invoice_ids and pay.reconciled_invoice_ids[0] or pay.reconciled_invoice_ids"/>  <!-- Work only with 1 invoice  per payment -->
                     <t t-set="lang" t-value="o.invoice_user_id.sudo().lang if o.type in ('in_invoice', 'in_refund') else o.partner_id.lang"/>
-                    <t t-call="ecosoft.report_invoice_document_from_payments" t-lang="lang"/>
+                    <t t-set="ncopies" t-value="2"/>
+                    <t t-foreach="range(ncopies)" t-as="i">
+                        <t t-call="ecosoft.report_invoice_document_from_payments" t-lang="lang"/>
+                    </t>
                 </t>
             </t>
         </template>

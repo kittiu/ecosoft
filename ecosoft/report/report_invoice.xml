@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Invoices -->
+
+        <template id="report_invoice" inherit_id="account.report_invoice">
+            <xpath expr="//t[@t-call='account.report_invoice_document']" position="replace">
+                <t t-set="ncopies" t-value="2"/>
+                <t t-foreach="range(ncopies)" t-as="i">
+                    <t t-call="account.report_invoice_document" t-lang="lang"/>
+                </t>
+            </xpath>
+        </template>
+
+        <template id="report_invoice_with_payments" inherit_id="account.report_invoice_with_payments">
+            <xpath expr="//t[@t-call='account.report_invoice_document_with_payments']" position="replace">
+                <t t-set="ncopies" t-value="2"/>
+                <t t-foreach="range(ncopies)" t-as="i">
+                    <t t-call="account.report_invoice_document_with_payments" t-lang="lang"/>
+                </t>
+            </xpath>
+        </template>
+
+        <template id="report_invoice_document_label" inherit_id="account.report_invoice_document">
+            <xpath expr="//h2/span[@t-field='o.name']" position="after">
+                <span t-if="i > 0">(COPY)</span>
+            </xpath>
+        </template>
+
+        <!-- Receipts -->
+
+        <template id="report_payment_receipt" inherit_id="account.report_payment_receipt">
+            <xpath expr="//t[@t-call='account.report_payment_receipt_document']" position="replace">
+                <t t-set="ncopies" t-value="2"/>
+                <t t-foreach="range(ncopies)" t-as="i">
+                    <t t-call="account.report_payment_receipt_document" t-lang="lang"/>
+                </t>
+            </xpath>
+        </template>
+
+        <template id="report_payment_receipt_document" inherit_id="account.report_payment_receipt_document">
+            <xpath expr="//h3/strong/span[@t-field='o.name']" position="after">
+                <span t-if="i > 0">(COPY)</span>
+            </xpath>
+        </template>
+
+    </data>
+</odoo>

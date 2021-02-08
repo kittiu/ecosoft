@@ -19,7 +19,7 @@
                 'l10n_th_partner',
                 'hr',
                 'report_csv',
-                'excel_import_export',
+                # 'excel_import_export',
                 ],
     'data': [
         # Forms and Reports
@@ -28,6 +28,7 @@
         'report/sale_report_templates.xml',
         'report/report_receipt_tax_invoice.xml',
         'report/report_invoices_tax_invoice.xml',
+        'report/report_invoice.xml',
         # Salary Export
         'salary_export/security/ir.model.access.csv',
         'salary_export/views/salary_export.xml',
