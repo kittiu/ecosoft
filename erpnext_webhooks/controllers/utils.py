@@ -255,8 +255,8 @@ class WebhookUtils(models.AbstractModel):
         _logger.info("[{}].create_update_data(), input: {}".format(model, vals))
         # Update
         search_value = vals["payload"].get(self._search_key(model))
-        if not self.search([(self._search_key(model), "=", search_value)]):
-            return self.create_data(vals)  # fall back to create
+        if not self.env[model].search([(self._search_key(model), "=", search_value)]):
+            return self.create_data(model, vals)  # fall back to create
         res = self.friendly_update_data(model, vals, self._search_key(model))
         if res["is_success"]:
             res_id = res["result"]["id"]
