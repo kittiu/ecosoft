@@ -24,22 +24,22 @@ class AccountPayment(models.Model):
         help="Sum of deduction amount(s) must equal to the payment difference",
     )
 
-    @api.constrains("deduction_ids")
+    @api.constrains("deduction_ids", "payment_difference_handling")
     def _check_deduction_amount(self):
-        self.ensure_one()
         prec_digits = self.env.user.company_id.currency_id.decimal_places
-        if self.payment_difference_handling == "reconcile_multi_deduct":
-            if (
-                float_compare(
-                    self.payment_difference,
-                    sum(self.deduction_ids.mapped("amount")),
-                    precision_digits=prec_digits,
-                )
-                != 0
-            ):
-                raise UserError(
-                    _("The total deduction should be %s") % self.payment_difference
-                )
+        for rec in self:
+            if rec.payment_difference_handling == "reconcile_multi_deduct":
+                if (
+                    float_compare(
+                        rec.payment_difference,
+                        sum(rec.deduction_ids.mapped("amount")),
+                        precision_digits=prec_digits,
+                    )
+                    != 0
+                ):
+                    raise UserError(
+                        _("The total deduction should be %s") % rec.payment_difference
+                    )
 
     @api.depends("payment_difference", "deduction_ids")
     def _compute_deduct_residual(self):
@@ -82,7 +82,6 @@ class AccountPayment(models.Model):
             company_currency = payment.company_id.currency_id
             write_off_amount = -payment.payment_difference or 0.0
             write_off_balance = 0.0
-            currency_id = False
             if payment.currency_id == company_currency:
                 write_off_balance = write_off_amount
             else:  # Multi-currencies.
@@ -92,39 +91,51 @@ class AccountPayment(models.Model):
                     payment.company_id,
                     payment.payment_date,
                 )
-                currency_id = payment.currency_id.id
             # Create new line_ids with multi deduction table
             if write_off_balance:
-                for deduct in payment.deduction_ids:
-                    wo_amount_currency = deduct.amount
-                    wo_amount = payment.currency_id._convert(
-                        wo_amount_currency,
-                        company_currency,
-                        payment.company_id,
-                        payment.payment_date,
-                    )
+                for deduct in payment.deduction_ids.filtered(lambda l: not l.open):
                     move_vals[0]["line_ids"].append(
-                        (
-                            0,
-                            0,
-                            {
-                                "name": deduct.name,
-                                "amount_currency": wo_amount_currency,
-                                "currency_id": currency_id,
-                                "debit": wo_amount > 0.0 and wo_amount or 0.0,
-                                "credit": wo_amount < 0.0 and -wo_amount or 0.0,
-                                "date_maturity": payment.payment_date,
-                                "partner_id": payment.partner_id.id,
-                                "account_id": deduct.account_id.id,
-                                "payment_id": payment.id,
-                            },
-                        )
+                        (0, 0, payment._prepare_deduct_move_line(deduct))
                     )
 
+            # Remove the keep open amount from AR/AP line
+            move_lines = move_vals[0]["line_ids"]
+            debit = sum(map(lambda l: l[2]["debit"], move_lines))
+            credit = sum(map(lambda l: l[2]["credit"], move_lines))
+            dest_account_id = payment.destination_account_id.id
+            dest_line = list(
+                filter(lambda l: l[2]["account_id"] == dest_account_id, move_lines)
+            )
+            if debit > credit:
+                dest_line[0][2]["debit"] -= abs(debit - credit)
+            elif credit > debit:
+                dest_line[0][2]["credit"] -= abs(debit - credit)
+            # --
             all_move_vals += move_vals
         # Set diff handling back to original
         x_payments.write({"payment_difference_handling": "reconcile_multi_deduct"})
         return all_move_vals
+
+    def _prepare_deduct_move_line(self, deduct):
+        company_currency = self.company_id.currency_id
+        currency_id = (
+            self.currency_id.id if self.currency_id != company_currency else False
+        )
+        wo_amount_currency = deduct.amount
+        wo_amount = self.currency_id._convert(
+            wo_amount_currency, company_currency, self.company_id, self.payment_date,
+        )
+        return {
+            "name": deduct.name,
+            "amount_currency": wo_amount_currency,
+            "currency_id": currency_id,
+            "debit": wo_amount > 0.0 and wo_amount or 0.0,
+            "credit": wo_amount < 0.0 and -wo_amount or 0.0,
+            "date_maturity": self.payment_date,
+            "partner_id": self.partner_id.id,
+            "account_id": deduct.account_id.id,
+            "payment_id": self.id,
+        }
 
 
 class AccountPaymentDeduction(models.Model):
@@ -147,7 +158,21 @@ class AccountPaymentDeduction(models.Model):
         comodel_name="account.account",
         string="Account",
         domain=[("deprecated", "=", False)],
-        required=True,
+        required=False,
     )
+    open = fields.Boolean(string="Open", help="Keep this line open")
     amount = fields.Monetary(string="Deduction Amount", required=True)
     name = fields.Char(string="Label", required=True)
+
+    @api.onchange("open")
+    def _onchange_open(self):
+        if self.open:
+            self.account_id = False
+            self.name = _("Keep open")
+        else:
+            self.name = False
+
+    @api.onchange("account_id")
+    def _onchange_account_id(self):
+        if self.account_id:
+            self.open = False
