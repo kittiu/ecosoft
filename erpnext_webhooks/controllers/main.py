@@ -1,12 +1,11 @@
 # Copyright 2022 Ecosoft Co., Ltd (http://ecosoft.co.th/)
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html)
+
 from odoo import http
 from odoo.http import request
-from odoo import models
 
 
-class ERPNextController(http.Controller):
-
+class WebhookController(http.Controller):
     @http.route("/api/create_data", type="json", auth="none")
     def create_data(self, model, vals):
         # Authentication
@@ -23,4 +22,3 @@ class ERPNextController(http.Controller):
         # Create/Update Data
         res = request.env["webhook.utils"].create_update_data(model, vals)
         return res
-
