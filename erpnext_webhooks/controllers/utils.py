@@ -1,3 +1,6 @@
+# Copyright 2022 Ecosoft Co., Ltd (http://ecosoft.co.th/)
+# License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html)
+
 import logging
 
 from odoo import _, api, models
@@ -11,17 +14,70 @@ class WebhookUtils(models.AbstractModel):
     _description = "Utils Class"
 
     def _search_key(self, model):
-        """ Return the unique search key for each model, else use 'name' """
+        """Return the unique search key for each model, else use 'name'"""
         keys = {
             "product.product": "default_code",
-            "res.partner": "ref",
+            # "res.partner": "ref",
         }
         key = keys.get(model, "name")
         return key
 
+    def _get_o2m_line(self, line_data_dict, line_obj):
+        rec_fields = []
+        rec_fields_append = rec_fields.append
+        line_fields = []
+        for field, model_field in line_obj._fields.items():
+            if field in line_data_dict and model_field.type != "one2many":
+                rec_fields_append(field)
+            elif field in line_data_dict:
+                line_fields.append(field)
+        line_dict = {k: v for k, v in line_data_dict.items() if k in rec_fields}
+        return line_dict, line_fields
+
+    def _get_dict_attachment(self, list_attachment, model, res_id):
+        return [
+            {
+                "name": attach["name"],
+                "type": attach.get("type", "binary"),
+                "url": attach.get("url", False),
+                "res_model": model,
+                "res_id": res_id,
+                "datas": attach.get("datas") and attach["datas"].encode("ascii") or False,
+            }
+            for attach in list_attachment
+        ]
+
+    def _create_file_attachment(self, obj, data_dict, line_all_fields):
+        Attachment = self.env["ir.attachment"]
+        file_attach = self._get_dict_attachment(
+            data_dict.get("attachment_ids", []), obj._name, obj.id
+        )
+        for line_field in line_all_fields:
+            # Add attachment on o2m level 1
+            for i, obj_line in enumerate(obj[line_field]):
+                line_data_dict = data_dict[line_field][i]
+                file_attach += self._get_dict_attachment(
+                    line_data_dict.get("attachment_ids", []),
+                    obj_line._name,
+                    obj_line.id,
+                )
+                # Find sub line in line
+                line_fields = self._get_o2m_line(line_data_dict, obj_line)[1]
+                for line_sub_field in line_fields:
+                    # Add attachment on o2m level 2
+                    for j, obj_sub_line in enumerate(obj_line[line_sub_field]):
+                        sub_line_data_dict = line_data_dict[line_sub_field][j]
+                        file_attach += self._get_dict_attachment(
+                            sub_line_data_dict.get("attachment_ids", []),
+                            obj_sub_line._name,
+                            obj_sub_line.id,
+                        )
+        if file_attach:
+            Attachment.create(file_attach)
+
     @api.model
     def friendly_create_data(self, model, vals):
-        """ Accept friendly data_dict in following format to create data,
+        """Accept friendly data_dict in following format to create data,
             and auto_create data if found no match.
         -------------------------------------------------------------
         vals:
@@ -29,14 +85,26 @@ class WebhookUtils(models.AbstractModel):
             'payload': {
                 'field1': value1,
                 'field2_id': value2,  # can be ID or name search string
+                'attachment_ids': [  # for attach file
+                    {
+                        'name': value3,
+                        'datas': value4,
+                    }
+                ],
                 'line_ids': [
                     {
-                        'field3': value3,
-                        'field4_id': value4,  # can be ID or name search string
+                        'field3': value5,
+                        'field4_id': value6,  # can be ID or name search string
                     },
+                    'attachment_ids': [  # for attach file in line
+                        {
+                            'name': value7,
+                            'datas': value8,
+                        }
+                    ],
                     {..new record..}, {..new record..}, ...
                 ],
-            }
+            },
             'auto_create': {
                 'field2_id': {'name': 'some name', ...},
                 'field4_id': {'name': 'some name', ...},
@@ -48,42 +116,55 @@ class WebhookUtils(models.AbstractModel):
         data_dict = vals.get("payload", {})
         auto_create = vals.get("auto_create", {})
         res = {}
-        rec = self.env[model].new()  # Dummy reccord
+        rec = self.env[model].new()  # Dummy record
         rec_fields = []
-        line_fields = []
+        line_all_fields = []
         for field, model_field in rec._fields.items():
             if field in data_dict and model_field.type != "one2many":
                 rec_fields.append(field)
             elif field in data_dict:
-                line_fields.append(field)
+                line_all_fields.append(field)
         rec_dict = {k: v for k, v in data_dict.items() if k in rec_fields}
         rec_dict = self._finalize_data_to_write(rec, rec_dict, auto_create)
         # Prepare Line Dict (o2m)
-        for line_field in line_fields:
+        for line_field in line_all_fields:
             final_line_dict = []
+            final_line_append = final_line_dict.append
             # Loop all o2m lines, and recreate it
             for line_data_dict in data_dict[line_field]:
-                rec_fields = []
-                line_fields = []
-                for field, model_field in rec[line_field]._fields.items():
-                    if field in line_data_dict and model_field.type != "one2many":
-                        rec_fields.append(field)
-                    elif field in line_data_dict:
-                        line_fields.append(field)
-                line_dict = {k: v for k, v in line_data_dict.items() if k in rec_fields}
-                if line_fields:
-                    raise ValidationError(
-                        _(
-                            "friendly_create_data() support "
-                            "only 1 level of one2many lines"
-                        )
-                    )
+                line_dict, line_fields = self._get_o2m_line(
+                    line_data_dict, rec[line_field]
+                )
                 line_dict = self._finalize_data_to_write(
                     rec[line_field], line_dict, auto_create
                 )
-                final_line_dict.append((0, 0, line_dict))
+                # Prepare Sub Line Dict (o2m)
+                for line_sub_field in line_fields:
+                    final_sub_line_dict = []
+                    final_sub_line_append = final_sub_line_dict.append
+
+                    # Loop all o2m sub lines, and recreate it
+                    for line_sub_data_dict in line_data_dict[line_sub_field]:
+                        sub_line_dict, line_sub_fields = self._get_o2m_line(
+                            line_sub_data_dict, rec[line_field][line_sub_field]
+                        )
+                        sub_line_dict = self._finalize_data_to_write(
+                            rec[line_field][line_sub_field], sub_line_dict, auto_create
+                        )
+                        final_sub_line_append((0, 0, sub_line_dict))
+                        if line_sub_fields:
+                            raise ValidationError(
+                                _(
+                                    "friendly_create_data() support "
+                                    "2 level of one2many lines"
+                                )
+                            )
+                    line_dict.update({line_sub_field: final_sub_line_dict})
+                final_line_append((0, 0, line_dict))
             rec_dict[line_field] = final_line_dict
         obj = rec.create(rec_dict)
+        # Create Attachment (if any)
+        self._create_file_attachment(obj, data_dict, line_all_fields)
         res = {
             "is_success": True,
             "result": {"id": obj.id},
@@ -93,7 +174,7 @@ class WebhookUtils(models.AbstractModel):
 
     @api.model
     def friendly_update_data(self, model, vals, key_field):
-        """ Accept friendly data_dict in following format to update existing rec
+        """Accept friendly data_dict in following format to update existing rec
         This method, will always delete o2m lines and recreate it.
         -------------------------------------------------------------
         vals:
@@ -134,16 +215,16 @@ class WebhookUtils(models.AbstractModel):
                 _('Search key "%s" found mutiple matches!') % data_dict[key_field]
             )
         rec_fields = []
-        line_fields = []
+        line_all_fields = []
         for field, model_field in rec._fields.items():
             if field in data_dict and model_field.type != "one2many":
                 rec_fields.append(field)
             elif field in data_dict:
-                line_fields.append(field)
+                line_all_fields.append(field)
         rec_dict = {k: v for k, v in data_dict.items() if k in rec_fields}
         rec_dict = self._finalize_data_to_write(rec, rec_dict, auto_create)
         # Prepare Line Dict (o2m)
-        for line_field in line_fields:
+        for line_field in line_all_fields:
             lines = rec[line_field]
             # First, delete all lines o2m
             lines.unlink()
@@ -151,26 +232,38 @@ class WebhookUtils(models.AbstractModel):
             final_line_append = final_line_dict.append
             # Loop all o2m lines, and recreate it
             for line_data_dict in data_dict[line_field]:
-                rec_fields = []
-                rec_fields_append = rec_fields.append
-                line_fields = []
-                for field, model_field in rec[line_field]._fields.items():
-                    if field in line_data_dict and model_field.type != "one2many":
-                        rec_fields_append(field)
-                    elif field in line_data_dict:
-                        line_fields.append(field)
-                line_dict = {k: v for k, v in line_data_dict.items() if k in rec_fields}
-                if line_fields:
-                    raise ValidationError(
-                        _(
-                            "friendly_update_data() support "
-                            "only 1 level of one2many lines"
+                line_dict, line_fields = self._get_o2m_line(
+                    line_data_dict, rec[line_field]
+                )
+                line_dict = self._finalize_data_to_write(
+                    rec[line_field], line_dict, auto_create
+                )
+                # Prepare Sub Line Dict (o2m)
+                for line_sub_field in line_fields:
+                    final_sub_line_dict = []
+                    final_sub_line_append = final_sub_line_dict.append
+                    # Loop all o2m sub lines, and recreate it
+                    for line_sub_data_dict in line_data_dict[line_sub_field]:
+                        sub_line_dict, line_sub_fields = self._get_o2m_line(
+                            line_sub_data_dict, rec[line_field][line_sub_field]
                         )
-                    )
-                line_dict = self._finalize_data_to_write(lines, line_dict, auto_create)
+                        sub_line_dict = self._finalize_data_to_write(
+                            rec[line_field][line_sub_field], sub_line_dict, auto_create
+                        )
+                        final_sub_line_append((0, 0, sub_line_dict))
+                        if line_sub_fields:
+                            raise ValidationError(
+                                _(
+                                    "friendly_update_data() support "
+                                    "2 level of one2many lines"
+                                )
+                            )
+                    line_dict.update({line_sub_field: final_sub_line_dict})
                 final_line_append((0, 0, line_dict))
             rec_dict[line_field] = final_line_dict
         rec.write(rec_dict)
+        # Create Attachment (if any)
+        self._create_file_attachment(rec, data_dict, line_all_fields)
         res = {
             "is_success": True,
             "result": {"id": rec.id},
@@ -179,52 +272,57 @@ class WebhookUtils(models.AbstractModel):
         return res
 
     @api.model
-    def _finalize_data_to_write(self, rec, rec_dict, auto_create={}):
-        """ For many2one, many2many, use name search to get id """
+    def _finalize_data_to_write(self, rec, rec_dict, auto_create=False):
+        """For many2one, many2many, use name search to get id"""
         final_dict = {}
+        if not auto_create:
+            auto_create = {}
         for key, value in rec_dict.items():
             ffield = rec._fields.get(key, False)
             if ffield:
                 ftype = ffield.type
-                if key in rec_dict.keys() and ftype in ("many2one", "many2many"):
+                if (
+                    key in rec_dict.keys()
+                    and ftype in ("many2one", "many2many")
+                    and rec_dict[key]
+                    and isinstance(rec_dict[key], str)
+                ):
                     model = rec._fields[key].comodel_name
                     Model = self.env[model]
-                    if rec_dict[key] and isinstance(rec_dict[key], str):
-                        search_vals = []
-                        if ftype == "many2one":
-                            search_vals = [rec_dict[key]]
-                        elif ftype == "many2many":
-                            search_vals = rec_dict[key].split(",")
-                            value = []  # for many2many, result will be tuple
-                        for val in search_vals:
+                    search_vals = (
+                        ftype == "many2one"
+                        and [rec_dict[key]]
+                        or rec_dict[key].split(",")
+                    )
+                    value = []  # for many2many, result will be tuple
+                    for val in search_vals:
+                        values = Model.name_search(val, operator="=")
+                        # If failed, try again by ID
+                        if len(values) != 1 and val and isinstance(val, int):
+                            rec = Model.search([("id", "=", val)])
+                            values = len(rec) == 1 and [(rec.id,)] or values
+                        # Found > 1, can't continue
+                        if len(values) > 1:
+                            raise ValidationError(
+                                _('"%s" matched more than 1 record') % val
+                            )
+                        # If not found, but auto_create it
+                        if len(values) != 1 and auto_create.get(key):
+                            new_recs = []
+                            if isinstance(auto_create[key], list):
+                                new_recs += auto_create[key]
+                            if isinstance(auto_create[key], dict):
+                                new_recs.append(auto_create[key])
+                            for new_rec in new_recs:
+                                self.friendly_create_data(model, {"payload": new_rec})
                             values = Model.name_search(val, operator="=")
-                            # If failed, try again by ID
-                            if len(values) != 1:
-                                if val and isinstance(val, int):
-                                    rec = Model.search([("id", "=", val)])
-                                    if len(rec) == 1:
-                                        values = [(rec.id,)]
-                            # Found > 1, can't continue
-                            if len(values) > 1:
-                                raise ValidationError(
-                                    _('"%s" matched more than 1 record') % val
-                                )
-                            # If not found, but auto_create it
-                            if len(values) != 1 and auto_create.get(key):
-                                new_recs = []
-                                if isinstance(auto_create[key], list):
-                                    new_recs += auto_create[key]
-                                if isinstance(auto_create[key], dict):
-                                    new_recs.append(auto_create[key])
-                                for new_rec in new_recs:
-                                    self.friendly_create_data(model, {"payload": new_rec})
-                                values = Model.name_search(val, operator="=")
-                            elif not values:
-                                raise ValidationError(_('"%s" found no match.') % val)
-                            if ftype == "many2one":
-                                value = values[0][0]
-                            elif ftype == "many2many":
-                                value.append((4, values[0][0]))
+                        elif not values:
+                            raise ValidationError(_('"%s" found no match.') % val)
+                        value = (
+                            ftype == "many2one"
+                            and values[0][0]
+                            or value.append((4, values[0][0]))
+                        )
             final_dict.update({key: value})
         return final_dict
 
