@@ -12,3 +12,9 @@ class IrModel(models.Model):
         help="When selected, the model is restricted to read-only unless the "
         "user has the special permission.",
     )
+
+    def write(self, vals):
+        res = super().write(vals)
+        if "restrict_update" in vals:
+            self.env["ir.model.access"].call_cache_clearing_methods()
+        return res

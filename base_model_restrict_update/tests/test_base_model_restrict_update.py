@@ -61,3 +61,12 @@ class TestBaseModelRestrictUpdate(SavepointCase):
             self.test_partner.with_user(self.permit_test_user.id).update(
                 {"name": "Test Partner 2"}
             )
+
+    def test_05_readonly_user_wizard(self):
+        """Readonly user is not blocked on wizards (e.g. report wizards)"""
+        self.permit_test_user.write({"is_readonly_user": True})
+        access = self.env["ir.model.access"].with_user(self.permit_test_user.id)
+        # Transient model: not restricted
+        self.assertFalse(access._test_readonly("base.language.install"))
+        # Real document model: still restricted
+        self.assertTrue(access._test_readonly("res.partner"))

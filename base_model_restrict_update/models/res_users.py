@@ -13,7 +13,7 @@ class ResUsers(models.Model):
         help="Set to true and the user can update restricted model.",
     )
     is_readonly_user = fields.Boolean(
-        "Ready User",
+        "Readonly User",
         help="Set to true and the user are readonly user on all models",
     )
 
@@ -22,3 +22,9 @@ class ResUsers(models.Model):
         for user in self:
             if self.env.ref("base.group_system") in user.groups_id:
                 raise UserError(_("You cannot set admin user as a readonly user."))
+
+    def write(self, vals):
+        res = super().write(vals)
+        if "is_readonly_user" in vals or "unrestrict_model_update" in vals:
+            self.env["ir.model.access"].call_cache_clearing_methods()
+        return res

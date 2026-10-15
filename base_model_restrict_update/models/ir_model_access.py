@@ -32,6 +32,9 @@ class IrModelAccess(models.Model):
 
     @api.model
     def _test_readonly(self, model):
+        # Wizards (transient models) hold no business data, e.g. report wizards
+        if model in self.env and self.env[model].is_transient():
+            return False
         exclude_models = self._readonly_exclude_models()
         if model not in exclude_models and self.env.user.is_readonly_user:
             return True
@@ -43,7 +46,11 @@ class IrModelAccess(models.Model):
             "SELECT restrict_update FROM ir_model WHERE model = %s", (model,)
         )
         query_res = self.env.cr.dictfetchone()
-        if query_res["restrict_update"] and not self.env.user.unrestrict_model_update:
+        if (
+            query_res
+            and query_res["restrict_update"]
+            and not self.env.user.unrestrict_model_update
+        ):
             return True
         return False
 
